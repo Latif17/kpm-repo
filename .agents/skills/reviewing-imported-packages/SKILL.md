@@ -6,23 +6,34 @@ description: Use when importing a third-party package, codebase, or tweak into t
 # Reviewing Imported Packages
 
 ## Overview
-Importing third-party code into embedded systems carries risks of bricking, file system conflicts, and framework crashes. This skill enforces a strict, multi-point audit before integration.
 
-## When to Use
-- Importing a tweak, script, or binary from another project.
-- Migrating packages between platforms (e.g., KUAL to kpm).
-- Integrating an external repository into the workspace.
+Importing third-party code into embedded systems carries risks of bricking, file system conflicts, and framework crashes. This skill enforces a strict, multi-point audit and rigorous verification before integration.
+
+**Core principle:** Audit before committing. Verify compatibility dynamically. Technical correctness and system stability over rapid imports.
+
+## The Review Pattern
+
+```
+WHEN importing or reviewing a third-party package:
+
+1. UNDERSTAND: Determine the original environment (e.g., KUAL) and the target environment (e.g., kpm).
+2. MANIFEST: Check the package metadata and build structure for correctness (e.g. valid `manifest.json`).
+3. AUDIT: Review the source for dangerous or hardcoded behaviors.
+4. PATCH: Fix identified issues incrementally.
+5. VERIFY: Build the package locally and run tests.
+```
 
 ## The Audit Protocol
-When reviewing an imported package, you MUST audit all of the following areas. Create a todo list.
 
-### 1. Build System & Installation
-- **Risk:** Overwriting read-only rootfs or system binaries.
-- **Action:** Check `Makefile`, `CMakeLists.txt`, and install scripts. Ensure installation targets are strictly confined to the package directory.
+You MUST audit all of the following areas explicitly. Check your findings against this list.
+
+### 1. Build System & Packaging
+- **Risk:** Missing metadata, invalid manifests, or overwriting read-only rootfs.
+- **Action:** Check `manifest.json`, `Makefile`, and install scripts. Ensure `name`, `version`, `author`, `description` are correctly mapped and present. Ensure installation targets are strictly confined to the package directory.
 
 ### 2. File System & Hardcoded Paths
-- **Risk:** Broken functionality or rogue file creation.
-- **Action:** Search for hardcoded absolute paths (`/mnt/`, `/var/`, `/usr/`). Ensure paths are resolved dynamically relative to the execution directory.
+- **Risk:** Broken functionality or rogue file creation on new environments.
+- **Action:** Search for hardcoded absolute paths (`/mnt/us/extensions/...`, `/var/`, `/usr/`). Ensure paths are resolved dynamically relative to the execution directory (e.g. `$PKG_DIR` or `dirname "$0"`). Standard paths like `/mnt/us/documents` for user files are acceptable.
 
 ### 3. IPC, DBus & Framework Calls
 - **Risk:** Using deprecated/changed system calls on new firmware (e.g., `com.lab126.*`).
@@ -34,7 +45,28 @@ When reviewing an imported package, you MUST audit all of the following areas. C
 
 ### 5. Dependency Linking
 - **Risk:** Missing libraries or ABI conflicts.
-- **Action:** Verify required system libraries (GTK, GLib, etc.) exist on the target or are bundled correctly.
+- **Action:** Verify required system libraries (GTK, GLib, etc.) exist on the target or are declared as dependencies in the manifest.
+
+## Forbidden Practices
+
+**NEVER:**
+- Commit an imported package before running the build suite.
+- Leave hardcoded `/mnt/us/extensions/` paths assuming "it will just work".
+- Approve a review with missing required manifest fields (e.g., using `id` instead of `name` for kpm).
+
+**INSTEAD:**
+- Use dynamic paths.
+- Run `pytest` or `tools/kpm-helper.py package pack <pkg>` to verify packaging.
+- Patch wrapper scripts to be portable.
+
+## Verification & Testing
+
+```
+AFTER patching the package:
+  1. ALWAYS test the package manifest by running the build/pack script.
+  2. ALWAYS run the integration test suite (e.g., `pytest tests/ -v`).
+  3. DO NOT claim the import is successful until tests pass.
+```
 
 ## Red Flags - STOP and Audit Further
 | Excuse | Reality |
@@ -43,7 +75,9 @@ When reviewing an imported package, you MUST audit all of the following areas. C
 | "It's just an app, it won't brick" | If an app hooks into init/upstart and hangs, the device bootloops. |
 | "I'll fix the paths later" | Audit and patch BEFORE committing the import. |
 | "The dbus calls look standard" | Standard calls change between firmware versions. Verify them. |
+| "The manifest has an 'id' field" | Specific ecosystems (like kpm) strictly require 'name', leading to build failures. |
 
 ## Implementation Tips
 - Use `grep_search` aggressively for `/mnt`, `/etc`, `/usr`, `lipc`, and `dbus`.
 - Review all `.sh` wrapper scripts for dangerous operations (e.g., unchecked `rm -rf`, empty variables in `if` statements).
+- Use `kpm-helper.py` or equivalent tools to manually pack and verify the bundle format if tests fail.
