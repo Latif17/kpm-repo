@@ -20,8 +20,9 @@ WHEN importing or reviewing a third-party package:
 2. MANIFEST: Check the package metadata and build structure for correctness (e.g. valid `manifest.json`).
 3. AUDIT: Review the source for dangerous or hardcoded behaviors.
 4. PATCH: Fix identified issues incrementally.
-5. TEST: Write a package-specific integration test in `tests/` verifying core behavior and payload structure.
-6. VERIFY: Build the package locally and run all tests to ensure they pass.
+5. IMPROVE: Add improvements where necessary (e.g., robust explicit error logging, handling edge cases gracefully). Do not blindly port bad code.
+6. TEST: Write a package-specific integration test in `tests/` verifying core behavior and payload structure.
+7. VERIFY: Build the package locally and run all tests to ensure they pass.
 ```
 
 ## The Audit Protocol
@@ -47,6 +48,10 @@ You MUST audit all of the following areas explicitly. Check your findings agains
 ### 5. Dependency Linking
 - **Risk:** Missing libraries or ABI conflicts.
 - **Action:** Verify required system libraries (GTK, GLib, etc.) exist on the target or are declared as dependencies in the manifest.
+
+### 6. Robustness & Error Handling
+- **Risk:** Silent failures or generic system errors that make debugging impossible.
+- **Action:** Add explicit error logging (e.g., `echo "ERROR: failed to do X" >&2; exit 1`) to installation scripts and wrappers. Ensure scripts fail gracefully and communicate what went wrong. Do not just rely on `set -e`.
 
 ## Forbidden Practices
 

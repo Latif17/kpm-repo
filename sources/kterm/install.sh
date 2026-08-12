@@ -10,12 +10,16 @@ USE_ARMHF=$(awk -v fw="$FW_VERSION" 'BEGIN { split(fw, a, "."); if (a[1]+0 > 5 |
 
 if [ "$USE_ARMHF" = "1" ]; then
     echo "Firmware >= 5.16.3 detected. Using armhf binary."
-    [ -f "${PKG_DIR}/payload/bin/kterm_armhf" ] && mv "${PKG_DIR}/payload/bin/kterm_armhf" "${PKG_DIR}/payload/bin/kterm"
-    rm -f "${PKG_DIR}/payload/bin/kterm_softfp"
+    if [ -f "${PKG_DIR}/payload/bin/kterm_armhf" ]; then
+        mv "${PKG_DIR}/payload/bin/kterm_armhf" "${PKG_DIR}/payload/bin/kterm" || { echo "ERROR: Failed to rename armhf binary" >&2; exit 1; }
+    fi
+    rm -f "${PKG_DIR}/payload/bin/kterm_softfp" || { echo "ERROR: Failed to clean up softfp binary" >&2; exit 1; }
 else
     echo "Firmware < 5.16.3 detected. Using softfp binary."
-    [ -f "${PKG_DIR}/payload/bin/kterm_softfp" ] && mv "${PKG_DIR}/payload/bin/kterm_softfp" "${PKG_DIR}/payload/bin/kterm"
-    rm -f "${PKG_DIR}/payload/bin/kterm_armhf"
+    if [ -f "${PKG_DIR}/payload/bin/kterm_softfp" ]; then
+        mv "${PKG_DIR}/payload/bin/kterm_softfp" "${PKG_DIR}/payload/bin/kterm" || { echo "ERROR: Failed to rename softfp binary" >&2; exit 1; }
+    fi
+    rm -f "${PKG_DIR}/payload/bin/kterm_armhf" || { echo "ERROR: Failed to clean up armhf binary" >&2; exit 1; }
 fi
 
 echo "kterm installed successfully."
