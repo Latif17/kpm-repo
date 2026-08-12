@@ -13,6 +13,12 @@ style "white-bg" {
   
   base[NORMAL] = "#FFFFFF"
   text[NORMAL] = "#000000"
+
+  bg_pixmap[NORMAL] = "<none>"
+  bg_pixmap[PRELIGHT] = "<none>"
+  bg_pixmap[ACTIVE] = "<none>"
+  bg_pixmap[SELECTED] = "<none>"
+  bg_pixmap[INSENSITIVE] = "<none>"
 }
 
 class "GtkWidget" style "white-bg"
