@@ -253,6 +253,51 @@ def test_install_restores_data_when_db_read_fails_after_moves(tmp_path):
     assert not (tmp_path / "backup").exists()
 
 
+def test_install_preserves_true_original_value_across_interrupted_backup_and_upgrade(
+    tmp_path,
+):
+    # Simulate: (1) an install run was interrupted after moving
+    # adunits/assets into $BACKUP_DIR and writing a correct
+    # adunit_viewable.bak ("true"), but before the .complete marker was
+    # written. (2) KPM later calls `install.sh upgrade` as a normal
+    # lifecycle event - this skips the whole backup block (guarded by
+    # `$1 != upgrade`) but still runs the unconditional bottom section that
+    # flips the live DB to "false". (3) A later plain `install.sh` re-run
+    # must not lose the true original ("true") value by re-deriving it from
+    # the now-"false" live DB.
+    backup_dir = tmp_path / "backup"
+    backup_dir.mkdir()
+    (backup_dir / "adunits").mkdir()
+    (backup_dir / "adunits" / "unit1.png").write_text("fake asset")
+    (backup_dir / "assets").mkdir()
+    (backup_dir / "assets" / "logo.png").write_text("fake asset")
+    (backup_dir / "adunit_viewable.bak").write_text("true")
+    # No .complete marker - the interrupted attempt never got that far.
+    # No adunits/assets dirs at their original locations - they were
+    # already moved into backup, that's the interrupted state.
+
+    # Step 2: the intervening `install.sh upgrade` DB flip already happened,
+    # so the live DB is built already showing "false".
+    _make_appreg_db(tmp_path / "appreg.db", "false")
+
+    # Step 3: a plain reinstall attempt.
+    _run_script("install.sh", tmp_path)
+
+    # The freshly-written adunit_viewable.bak (written after this run moves
+    # adunits/assets back into backup) must hold the preserved original
+    # ("true"), not a value re-derived from the live DB (which would
+    # incorrectly be "false"). Read the file directly, not via the live DB -
+    # the live DB correctly ends up "false" after this run's own bottom
+    # section flips it, which is expected and not what's being checked here.
+    assert (backup_dir / "adunit_viewable.bak").read_text().strip() == "true"
+    assert (backup_dir / ".complete").exists()
+
+    # End-to-end check: the preserved value must actually flow through to a
+    # real restore, not just sit correctly in a file nobody reads.
+    _run_script("uninstall.sh", tmp_path)
+    assert _read_adunit_viewable(tmp_path / "appreg.db") == "true"
+
+
 def test_uninstall_normalizes_malicious_backup_value(tmp_path):
     _make_appreg_db(tmp_path / "appreg.db", "true")
 
