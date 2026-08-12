@@ -20,7 +20,8 @@ WHEN importing or reviewing a third-party package:
 2. MANIFEST: Check the package metadata and build structure for correctness (e.g. valid `manifest.json`).
 3. AUDIT: Review the source for dangerous or hardcoded behaviors.
 4. PATCH: Fix identified issues incrementally.
-5. VERIFY: Build the package locally and run tests.
+5. TEST: Write a package-specific integration test in `tests/` verifying core behavior and payload structure.
+6. VERIFY: Build the package locally and run all tests to ensure they pass.
 ```
 
 ## The Audit Protocol
@@ -63,9 +64,10 @@ You MUST audit all of the following areas explicitly. Check your findings agains
 
 ```
 AFTER patching the package:
-  1. ALWAYS test the package manifest by running the build/pack script.
-  2. ALWAYS run the integration test suite (e.g., `pytest tests/ -v`).
-  3. DO NOT claim the import is successful until tests pass.
+  1. ALWAYS create a package-specific test file in `tests/` (e.g. `test_pkgname.py`) to validate its expected structure or behaviors.
+  2. ALWAYS test the package manifest by running the build/pack script.
+  3. ALWAYS run the entire integration test suite (e.g., `.venv/bin/pytest tests/ -v`) to validate common tests and your new tests pass.
+  4. DO NOT claim the import is successful until tests pass.
 ```
 
 ## Red Flags - STOP and Audit Further
