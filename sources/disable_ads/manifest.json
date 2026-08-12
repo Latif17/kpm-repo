@@ -1,5 +1,5 @@
 {
-  "manifest_version": 3,
+  "manifest_version": 2,
   "id": "disable_ads",
   "name": "Disable Ads",
   "author": "Marek",

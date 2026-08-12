@@ -13,7 +13,7 @@ DIST_DIR = REPO_ROOT / "dist"
 KPM_HELPER = REPO_ROOT / "tools" / "kpm-helper.py"
 
 REPO_MANIFEST = {
-    "manifest_version": 3,
+    "manifest_version": 2,
     "id": "kindletweaks",
     "name": "KindleTweaks KPM Repository",
     "description": "Kindle tweaks migrated from Awesome-Kindle, packaged for KPM",
