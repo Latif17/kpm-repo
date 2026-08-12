@@ -39,7 +39,7 @@ You'll be given one of:
    and `_` (KPM's own id validation rule — anything else fails to pack).
    Confirm the id with the user if the source name is ambiguous.
 
-3. **Draft `manifest.json`.** Use manifest_version 3. Set `author` to the
+3. **Draft `manifest.json`.** Use manifest_version 2. Set `author` to the
    *original* tweak author (never KindleTweaks or yourself), `description`
    from the source's own description/header/README, `version` to `[1, 0, 0]`
    unless the upstream source has its own version you should preserve, and
