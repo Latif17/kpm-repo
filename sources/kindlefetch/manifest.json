@@ -2,9 +2,17 @@
   "manifest_version": 2,
   "id": "kindlefetch",
   "name": "KindleFetch",
-  "version": [1, 0, 0],
   "author": "justrals",
   "description": "Simple CLI for downloading books from Anna's Archive directly to your Kindle without a computer.",
-  "supported_platforms": null,
-  "dependencies": [{"id": "kterm"}]
+  "version": [
+    1,
+    0,
+    0
+  ],
+  "dependencies": [
+    {
+      "id": "kterm"
+    }
+  ],
+  "supported_platforms": null
 }
