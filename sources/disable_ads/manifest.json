@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "id": "disable_ads",
+  "name": "Disable Ads",
+  "author": "Marek",
+  "description": "Disables ads on ad-enabled Kindles, with full restore support on uninstall.",
+  "version": [
+    1,
+    0,
+    0
+  ],
+  "dependencies": [],
+  "supported_platforms": null
+}
