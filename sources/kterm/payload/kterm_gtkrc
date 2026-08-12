@@ -1,0 +1,20 @@
+style "white-bg" {
+  bg[NORMAL]   = "#FFFFFF"
+  bg[PRELIGHT] = "#FFFFFF"
+  bg[ACTIVE]   = "#FFFFFF"
+  bg[SELECTED] = "#FFFFFF"
+  bg[INSENSITIVE] = "#FFFFFF"
+  
+  fg[NORMAL]   = "#000000"
+  fg[PRELIGHT] = "#000000"
+  fg[ACTIVE]   = "#000000"
+  fg[SELECTED] = "#000000"
+  fg[INSENSITIVE] = "#000000"
+  
+  base[NORMAL] = "#FFFFFF"
+  text[NORMAL] = "#000000"
+}
+
+class "GtkWidget" style "white-bg"
+class "GtkWindow" style "white-bg"
+class "VteTerminal" style "white-bg"
