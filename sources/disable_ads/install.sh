@@ -4,9 +4,12 @@
 # Migrated for KPM by KindleTweaks. See MIGRATION_NOTES.md for provenance.
 #
 # Unlike the original scriptlet, this backs up what it removes so
-# uninstall.sh can restore ad functionality. Every step that could delete
-# or overwrite data is checked before proceeding, and failures leave data
-# recoverable rather than lost.
+# uninstall.sh can restore ad functionality. The original adunit_viewable
+# DB value is captured and durably written to disk before any risky
+# move/delete happens, and is never re-derived from the live DB once a
+# backup attempt has started - the live DB can no longer be trusted once
+# any part of an install has run (e.g. a later `install.sh upgrade` call
+# flips it independently of this backup lifecycle).
 
 ADUNITS_DIR="${DISABLE_ADS_ADUNITS_DIR:-/var/local/adunits}"
 ASSETS_DIR="${DISABLE_ADS_ASSETS_DIR:-/mnt/us/.assets}"
@@ -43,10 +46,6 @@ _restore_partial_backup() {
     return 0
 }
 
-# A backup is only safe to skip re-doing if it fully completed: the
-# .complete marker exists AND the saved DB value is actually present.
-# A marker with no corresponding value (e.g. partial disk damage) is
-# treated as no backup at all.
 _backup_is_complete() {
     [ -f "$BACKUP_DIR/.complete" ] && [ -s "$BACKUP_DIR/adunit_viewable.bak" ]
 }
@@ -54,24 +53,54 @@ _backup_is_complete() {
 if [ "$1" != "upgrade" ] && ! _backup_is_complete; then
     echo "Backing up ad assets and current ad-viewable setting..."
 
-    PRESERVED_ORIGINAL_VALUE=""
+    # Determine the original value to preserve BEFORE touching anything
+    # destructive. This is the one and only place the live DB is ever
+    # read for this purpose - once $BACKUP_DIR exists at all, a previous
+    # attempt has started and the live DB can no longer be trusted (it
+    # may already have been flipped to false by an intervening
+    # `install.sh upgrade` call).
+    ORIGINAL_VALUE=""
     if [ -d "$BACKUP_DIR" ]; then
-        echo "Found an incomplete backup from a previous attempt - restoring it before proceeding."
         if [ -s "$BACKUP_DIR/adunit_viewable.bak" ]; then
-            # This may be the only surviving record of the true original
-            # value (e.g. if an intervening `install.sh upgrade` already
-            # flipped the live DB to false) - keep it rather than re-reading
-            # the DB below, which could now hold the wrong value.
-            PRESERVED_ORIGINAL_VALUE=$(cat "$BACKUP_DIR/adunit_viewable.bak")
+            ORIGINAL_VALUE=$(cat "$BACKUP_DIR/adunit_viewable.bak")
         fi
+        if [ -z "$ORIGINAL_VALUE" ]; then
+            # A previous attempt started but left no usable record of the
+            # true original value (e.g. disk damage, or a whitespace-only
+            # file). The live DB may already be corrupted by an
+            # intervening upgrade, so it is not a safe source here either.
+            # Default to "true" - the common case for anyone installing
+            # this package - matching uninstall.sh's own default for this
+            # same ambiguous situation.
+            echo "WARNING: found an incomplete backup with no usable saved value - defaulting to 'true'." >&2
+            ORIGINAL_VALUE="true"
+        fi
+        echo "Found an incomplete backup from a previous attempt - restoring it before proceeding."
         if ! _restore_partial_backup; then
             echo "ERROR: could not fully restore the previous incomplete backup - aborting to avoid data loss. Manual recovery needed at $BACKUP_DIR." >&2
+            exit 1
+        fi
+    else
+        if ! ORIGINAL_VALUE=$(sqlite3 "$APPREG_DB" "select value from properties where name = 'adunit.viewable';"); then
+            echo "ERROR: failed to read adunit.viewable from $APPREG_DB - aborting install." >&2
+            exit 1
+        fi
+        if [ -z "$ORIGINAL_VALUE" ]; then
+            echo "ERROR: adunit.viewable read back empty from $APPREG_DB - aborting install." >&2
             exit 1
         fi
     fi
 
     if ! mkdir -p "$BACKUP_DIR"; then
         echo "ERROR: failed to create backup dir $BACKUP_DIR - aborting install." >&2
+        exit 1
+    fi
+
+    # Persist the determined value immediately, before any mv, so an
+    # interruption during the moves below can never lose it.
+    if ! printf '%s\n' "$ORIGINAL_VALUE" > "$BACKUP_DIR/adunit_viewable.bak"; then
+        echo "ERROR: failed to write adunit_viewable.bak - aborting install." >&2
+        rm -rf "$BACKUP_DIR"
         exit 1
     fi
 
@@ -89,20 +118,6 @@ if [ "$1" != "upgrade" ] && ! _backup_is_complete; then
             _restore_partial_backup
             exit 1
         fi
-    fi
-
-    if [ -n "$PRESERVED_ORIGINAL_VALUE" ]; then
-        printf '%s\n' "$PRESERVED_ORIGINAL_VALUE" > "$BACKUP_DIR/adunit_viewable.bak"
-    elif ! sqlite3 "$APPREG_DB" "select value from properties where name = 'adunit.viewable';" > "$BACKUP_DIR/adunit_viewable.bak"; then
-        echo "ERROR: failed to read adunit.viewable from $APPREG_DB - aborting install." >&2
-        _restore_partial_backup
-        exit 1
-    fi
-
-    if [ ! -s "$BACKUP_DIR/adunit_viewable.bak" ]; then
-        echo "ERROR: adunit_viewable.bak is empty after backup - aborting install." >&2
-        _restore_partial_backup
-        exit 1
     fi
 
     if ! touch "$BACKUP_DIR/.complete"; then

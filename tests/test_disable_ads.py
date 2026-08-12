@@ -298,6 +298,44 @@ def test_install_preserves_true_original_value_across_interrupted_backup_and_upg
     assert _read_adunit_viewable(tmp_path / "appreg.db") == "true"
 
 
+def test_install_defaults_to_true_when_prior_attempt_left_no_saved_value(tmp_path):
+    # Simulate the "hollow backup" state: a previous attempt got far enough
+    # to move adunits/assets into $BACKUP_DIR but left no usable record of
+    # the original adunit.viewable value (no adunit_viewable.bak at all -
+    # e.g. it crashed before writing it, or the file was lost to disk
+    # damage). Reaching this state at all proves a prior attempt ran, which
+    # means the live DB may already have been flipped to "false" by an
+    # intervening `install.sh upgrade` - so the live DB is NOT a safe
+    # source for the original value here.
+    backup_dir = tmp_path / "backup"
+    backup_dir.mkdir()
+    (backup_dir / "adunits").mkdir()
+    (backup_dir / "adunits" / "unit1.png").write_text("fake asset")
+    (backup_dir / "assets").mkdir()
+    (backup_dir / "assets" / "logo.png").write_text("fake asset")
+    # Deliberately no adunit_viewable.bak and no .complete marker.
+
+    # The live DB is already corrupted by that intervening event.
+    _make_appreg_db(tmp_path / "appreg.db", "false")
+
+    result = _run_script("install.sh", tmp_path)
+
+    # Must fall back to the safe default ("true" - the common case for
+    # anyone installing this package, and the same default uninstall.sh
+    # uses for its own ambiguous case), NOT re-derive it from the live DB
+    # (which would wrongly yield "false" and permanently strand the user
+    # with ads disabled even after uninstalling). Read the file directly:
+    # the live DB legitimately ends up "false" after this run's own bottom
+    # section flips it, so it can't answer this question.
+    assert (backup_dir / "adunit_viewable.bak").read_text().strip() == "true"
+    assert (backup_dir / ".complete").exists()
+    assert "defaulting to 'true'" in result.stderr
+
+    # End-to-end: the safe default must actually flow through to a restore.
+    _run_script("uninstall.sh", tmp_path)
+    assert _read_adunit_viewable(tmp_path / "appreg.db") == "true"
+
+
 def test_uninstall_normalizes_malicious_backup_value(tmp_path):
     _make_appreg_db(tmp_path / "appreg.db", "true")
 
