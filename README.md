@@ -17,10 +17,10 @@ jailbreak).
 
 ## Adding this repository to KPM
 
-Once installed, point KPM at:
+Once installed, point KPM at the exact manifest file:
 
 ```
-https://latif17.github.io/kpm-repo/
+https://latif17.github.io/kpm-repo/manifest.json
 ```
 
 ## Packages
