@@ -112,33 +112,31 @@ def test_install_aborts_and_cleans_up_on_backup_failure(tmp_path):
     (tmp_path / "assets" / "logo.png").write_text("fake asset")
     _make_appreg_db(tmp_path / "appreg.db", "true")
 
-    # Make the backup dir's *parent* untraversable so `mkdir -p "$BACKUP_DIR"`
-    # inside install.sh genuinely fails with EACCES. (A plain file planted
-    # directly at the backup path won't work here: install.sh now clears any
-    # stale non-.complete backup dir with `rm -rf "$BACKUP_DIR"` before the
-    # mkdir, which would just delete a planted file and let mkdir succeed.)
-    restrict_dir = tmp_path / "restrict"
-    restrict_dir.mkdir()
-    backup_path = restrict_dir / "backup"
-    restrict_dir.chmod(0o000)
+    # Plant a plain file (not a directory) at the exact backup path, so
+    # `mkdir -p "$BACKUP_DIR"` inside install.sh fails with a real conflict
+    # (target exists as non-directory) regardless of which user runs the
+    # test - unlike a chmod-based permission trick, this isn't defeated by
+    # a process running as root. Since the planted path isn't a directory,
+    # install.sh's `[ -d "$BACKUP_DIR" ]` "incomplete backup from a
+    # previous attempt" check is false, so it goes straight to `mkdir -p`,
+    # which then genuinely fails.
+    backup_path = tmp_path / "backup"
+    backup_path.write_text("not a directory")
 
-    try:
-        env = os.environ.copy()
-        env["DISABLE_ADS_ADUNITS_DIR"] = str(tmp_path / "adunits")
-        env["DISABLE_ADS_ASSETS_DIR"] = str(tmp_path / "assets")
-        env["DISABLE_ADS_APPREG_DB"] = str(tmp_path / "appreg.db")
-        env["DISABLE_ADS_BACKUP_DIR"] = str(backup_path)
-        env["DISABLE_ADS_REBOOT_CMD"] = "true"
+    env = os.environ.copy()
+    env["DISABLE_ADS_ADUNITS_DIR"] = str(tmp_path / "adunits")
+    env["DISABLE_ADS_ASSETS_DIR"] = str(tmp_path / "assets")
+    env["DISABLE_ADS_APPREG_DB"] = str(tmp_path / "appreg.db")
+    env["DISABLE_ADS_BACKUP_DIR"] = str(backup_path)
+    env["DISABLE_ADS_REBOOT_CMD"] = "true"
 
-        result = subprocess.run(
-            ["sh", str(PACKAGE_DIR / "install.sh")],
-            cwd=PACKAGE_DIR,
-            env=env,
-            capture_output=True,
-            text=True,
-        )
-    finally:
-        restrict_dir.chmod(0o755)
+    result = subprocess.run(
+        ["sh", str(PACKAGE_DIR / "install.sh")],
+        cwd=PACKAGE_DIR,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
 
     # The script must abort rather than silently continuing.
     assert result.returncode != 0
@@ -148,10 +146,63 @@ def test_install_aborts_and_cleans_up_on_backup_failure(tmp_path):
     assert (tmp_path / "assets" / "logo.png").exists()
     assert _read_adunit_viewable(tmp_path / "appreg.db") == "true"
 
-    # No completion marker and no stray backup dir - a retried install must
-    # attempt backup again rather than wrongly believing one already
-    # succeeded and skipping straight to destroying real data.
+    # No completion marker left behind - a retried install must attempt
+    # backup again rather than wrongly believing one already succeeded and
+    # skipping straight to destroying real data.
     assert not (backup_path / ".complete").exists()
+
+
+def test_install_recovers_interrupted_prior_backup_without_losing_data(tmp_path):
+    # Simulate a crash mid-install: an earlier run got as far as moving
+    # adunits/assets into $BACKUP_DIR but was interrupted (power loss, kill,
+    # reboot mid-script) before writing the ".complete" marker or finishing
+    # the sqlite3 read. The real ADUNITS_DIR/ASSETS_DIR are already gone,
+    # exactly as they would be mid-backup - only $BACKUP_DIR has the data.
+    backup_dir = tmp_path / "backup"
+    backup_dir.mkdir()
+    (backup_dir / "adunits").mkdir()
+    (backup_dir / "adunits" / "unit1.png").write_text("fake asset")
+    (backup_dir / "assets").mkdir()
+    (backup_dir / "assets" / "logo.png").write_text("fake asset")
+    # No .complete marker, no adunit_viewable.bak - the crash happened
+    # before those steps.
+
+    _make_appreg_db(tmp_path / "appreg.db", "true")
+
+    env = os.environ.copy()
+    env["DISABLE_ADS_ADUNITS_DIR"] = str(tmp_path / "adunits")
+    env["DISABLE_ADS_ASSETS_DIR"] = str(tmp_path / "assets")
+    env["DISABLE_ADS_APPREG_DB"] = str(tmp_path / "appreg.db")
+    env["DISABLE_ADS_BACKUP_DIR"] = str(backup_dir)
+    env["DISABLE_ADS_REBOOT_CMD"] = "true"
+
+    result = subprocess.run(
+        ["sh", str(PACKAGE_DIR / "install.sh")],
+        cwd=PACKAGE_DIR,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    # The interrupted attempt's data must never simply vanish. It must end
+    # up either restored to its original location (and, if the rest of this
+    # run's backup succeeds, re-backed-up from there), or still sitting
+    # recoverably inside $BACKUP_DIR if something failed along the way.
+    adunits_recoverable = (tmp_path / "backup" / "adunits" / "unit1.png").exists() or (
+        tmp_path / "adunits" / "unit1.png"
+    ).exists()
+    assets_recoverable = (tmp_path / "backup" / "assets" / "logo.png").exists() or (
+        tmp_path / "assets" / "logo.png"
+    ).exists()
+
+    assert adunits_recoverable, (
+        "interrupted-attempt adunits data was lost entirely:\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+    assert assets_recoverable, (
+        "interrupted-attempt assets data was lost entirely:\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
 
 
 def test_install_restores_data_when_db_read_fails_after_moves(tmp_path):
