@@ -19,6 +19,18 @@ reboot — confirmed deliberately, not a guess) but adds a real uninstall path:
 step when called with an `upgrade` argument, since that's a mid-upgrade call,
 not a real install or uninstall.
 
+## Known limitations
+
+- `install.sh`'s backup step checks each `mkdir`/`mv`/`sqlite3` call and, on
+  failure, moves any already-backed-up data back to its original location
+  before aborting (see the `_restore_partial_backup` helper) — a failure
+  partway through backup should never lose or strand data.
+  `uninstall.sh`'s restore path (the `mv "$BACKUP_DIR/adunits" "$ADUNITS_DIR"`
+  / `mv "$BACKUP_DIR/assets" "$ASSETS_DIR"` steps) does **not** have the
+  equivalent checks yet — a failed `mv` there is currently unchecked and
+  shares the same class of risk that was just fixed in `install.sh`. Fixing
+  it is out of scope for this round; flagging it here for a future pass.
+
 ## Verified
 
 - [ ] Tested on real hardware (install, confirm ads gone, uninstall, confirm ads

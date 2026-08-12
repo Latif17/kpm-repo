@@ -112,28 +112,33 @@ def test_install_aborts_and_cleans_up_on_backup_failure(tmp_path):
     (tmp_path / "assets" / "logo.png").write_text("fake asset")
     _make_appreg_db(tmp_path / "appreg.db", "true")
 
-    # Plant a plain file at the backup path so `mkdir -p "$BACKUP_DIR"`
-    # inside install.sh fails partway through the backup step. The backup
-    # dir doesn't exist as a directory yet, so the "already backed up"
-    # guard doesn't short-circuit the block - we actually exercise the
-    # failure/cleanup path.
-    backup_path = tmp_path / "backup"
-    backup_path.write_text("not a directory")
+    # Make the backup dir's *parent* untraversable so `mkdir -p "$BACKUP_DIR"`
+    # inside install.sh genuinely fails with EACCES. (A plain file planted
+    # directly at the backup path won't work here: install.sh now clears any
+    # stale non-.complete backup dir with `rm -rf "$BACKUP_DIR"` before the
+    # mkdir, which would just delete a planted file and let mkdir succeed.)
+    restrict_dir = tmp_path / "restrict"
+    restrict_dir.mkdir()
+    backup_path = restrict_dir / "backup"
+    restrict_dir.chmod(0o000)
 
-    env = os.environ.copy()
-    env["DISABLE_ADS_ADUNITS_DIR"] = str(tmp_path / "adunits")
-    env["DISABLE_ADS_ASSETS_DIR"] = str(tmp_path / "assets")
-    env["DISABLE_ADS_APPREG_DB"] = str(tmp_path / "appreg.db")
-    env["DISABLE_ADS_BACKUP_DIR"] = str(backup_path)
-    env["DISABLE_ADS_REBOOT_CMD"] = "true"
+    try:
+        env = os.environ.copy()
+        env["DISABLE_ADS_ADUNITS_DIR"] = str(tmp_path / "adunits")
+        env["DISABLE_ADS_ASSETS_DIR"] = str(tmp_path / "assets")
+        env["DISABLE_ADS_APPREG_DB"] = str(tmp_path / "appreg.db")
+        env["DISABLE_ADS_BACKUP_DIR"] = str(backup_path)
+        env["DISABLE_ADS_REBOOT_CMD"] = "true"
 
-    result = subprocess.run(
-        ["sh", str(PACKAGE_DIR / "install.sh")],
-        cwd=PACKAGE_DIR,
-        env=env,
-        capture_output=True,
-        text=True,
-    )
+        result = subprocess.run(
+            ["sh", str(PACKAGE_DIR / "install.sh")],
+            cwd=PACKAGE_DIR,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+    finally:
+        restrict_dir.chmod(0o755)
 
     # The script must abort rather than silently continuing.
     assert result.returncode != 0
@@ -143,11 +148,58 @@ def test_install_aborts_and_cleans_up_on_backup_failure(tmp_path):
     assert (tmp_path / "assets" / "logo.png").exists()
     assert _read_adunit_viewable(tmp_path / "appreg.db") == "true"
 
-    # The partial "backup" must not be left behind looking like a completed
-    # backup dir - otherwise a retried install would see it, skip the
-    # backup step entirely, and then destroy the real data with nothing
-    # behind it.
-    assert not backup_path.is_dir()
+    # No completion marker and no stray backup dir - a retried install must
+    # attempt backup again rather than wrongly believing one already
+    # succeeded and skipping straight to destroying real data.
+    assert not (backup_path / ".complete").exists()
+
+
+def test_install_restores_data_when_db_read_fails_after_moves(tmp_path):
+    # Reproduces the reviewer's exact repro: both mv steps succeed (real
+    # data is sitting inside $BACKUP_DIR), then the sqlite3 read step fails.
+    # The failure-cleanup path must move that data back out to its original
+    # location rather than deleting the backup dir (and the data inside it)
+    # wholesale.
+    (tmp_path / "adunits").mkdir()
+    (tmp_path / "adunits" / "unit1.png").write_text("fake asset")
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "assets" / "logo.png").write_text("fake asset")
+    db_path = tmp_path / "appreg.db"
+    _make_appreg_db(db_path, "true")
+
+    # Make the DB unreadable so the sqlite3 select fails only after both
+    # mv steps have already completed successfully.
+    db_path.chmod(0o000)
+
+    try:
+        env = os.environ.copy()
+        env["DISABLE_ADS_ADUNITS_DIR"] = str(tmp_path / "adunits")
+        env["DISABLE_ADS_ASSETS_DIR"] = str(tmp_path / "assets")
+        env["DISABLE_ADS_APPREG_DB"] = str(db_path)
+        env["DISABLE_ADS_BACKUP_DIR"] = str(tmp_path / "backup")
+        env["DISABLE_ADS_REBOOT_CMD"] = "true"
+
+        result = subprocess.run(
+            ["sh", str(PACKAGE_DIR / "install.sh")],
+            cwd=PACKAGE_DIR,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+    finally:
+        db_path.chmod(0o600)
+
+    assert result.returncode != 0
+
+    # The data must be restored to its original location - not lost, and
+    # not stuck inside a backup dir that then gets wiped out.
+    assert (tmp_path / "adunits" / "unit1.png").exists()
+    assert (tmp_path / "assets" / "logo.png").exists()
+
+    # No completion marker and no stray backup dir left behind - a retry
+    # must attempt backup again rather than skipping it.
+    assert not (tmp_path / "backup" / ".complete").exists()
+    assert not (tmp_path / "backup").exists()
 
 
 def test_uninstall_normalizes_malicious_backup_value(tmp_path):
