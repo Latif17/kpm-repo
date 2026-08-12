@@ -14,13 +14,12 @@ style "white-bg" {
   base[NORMAL] = "#FFFFFF"
   text[NORMAL] = "#000000"
 
-  bg_pixmap[NORMAL] = "white.xpm"
-  bg_pixmap[PRELIGHT] = "white.xpm"
-  bg_pixmap[ACTIVE] = "white.xpm"
-  bg_pixmap[SELECTED] = "white.xpm"
-  bg_pixmap[INSENSITIVE] = "white.xpm"
+  bg_pixmap[NORMAL] = "<none>"
+  bg_pixmap[PRELIGHT] = "<none>"
+  bg_pixmap[ACTIVE] = "<none>"
+  bg_pixmap[SELECTED] = "<none>"
+  bg_pixmap[INSENSITIVE] = "<none>"
 }
 
 class "GtkWidget" style "white-bg"
 class "GtkWindow" style "white-bg"
-class "VteTerminal" style "white-bg"

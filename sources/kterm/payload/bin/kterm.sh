@@ -8,6 +8,6 @@ if [ -n "${DPI}" ] && [ "${DPI}" -gt 290 ]; then
 elif [ -n "${DPI}" ] && [ "${DPI}" -gt 200 ]; then
   PARAM="${PARAM} -l ${EXTENSION}/layouts/keyboard-200dpi.xml"
 fi
-export TERM=xterm TERMINFO=${EXTENSION}/vte/terminfo
+export TERM=vt100 TERMINFO=${EXTENSION}/vte/terminfo
 export GTK2_RC_FILES="${EXTENSION}/kterm_gtkrc"
 ${EXTENSION}/bin/kterm ${PARAM} "$@"
