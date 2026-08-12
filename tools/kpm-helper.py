@@ -256,6 +256,11 @@ class Package:
             )  # For deprecated V1 packages
 
         with file:
+            def enforce_permissions(tarinfo):
+                if tarinfo.name.endswith(".sh") or tarinfo.name.endswith("_armhf") or tarinfo.name.endswith("_softfp") or tarinfo.name.endswith("kterm"):
+                    tarinfo.mode |= 0o111 # Add execute bit for user, group, and others
+                return tarinfo
+
             for source_item_name in os.listdir(self.path):
                 if source_item_name in self.RESERVED_FILEPATHS:
                     raise RuntimeError(
@@ -266,6 +271,7 @@ class Package:
                 file.add(
                     os.path.join(self.path, source_item_name),
                     arcname=source_item_name,
+                    filter=enforce_permissions
                 )
 
         logger.info("Done!")
