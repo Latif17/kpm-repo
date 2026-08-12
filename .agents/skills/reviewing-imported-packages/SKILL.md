@@ -41,6 +41,10 @@ You MUST audit all of the following areas explicitly. Check your findings agains
 - **Risk:** Using deprecated/changed system calls on new firmware (e.g., `com.lab126.*`).
 - **Action:** Find all `lipc-set-prop`, `dbus-send`, or native IPC calls. Verify they are safe for the target OS version.
 
+### 4. Library Integration ("Fake Books") & Package Isolation
+- **Risk:** Cluttering the Kindle library or breaking KPM's isolated package structure.
+- **Action:** Identify if the package attempts to register a "fake book" launcher. In KPM migrations, this is often handled via **Scriptlets** (placing a `.sh` file in `/mnt/us/documents/` that calls `kpm launch <pkg> --asap`). If a package relies on hardcoded paths (like `/mnt/us/koreader`), its `install.sh` might bypass KPM isolation by directly copying its payload to `/mnt/us/`. Ensure these bypasses are strictly necessary and properly cleaned up in `uninstall.sh`.
+
 ### 4. Boot & Lifecycle Hooks
 - **Risk:** Bricking via bootloop.
 - **Action:** Check for `upstart`, `init.d`, or `udev` rules. If a script runs at boot, ensure it cannot block the main framework from starting.
