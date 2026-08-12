@@ -11,7 +11,7 @@
   ],
   "dependencies": [
     {
-      "id": "kterm"
+      "name": "kterm"
     }
   ],
   "supported_platforms": null
