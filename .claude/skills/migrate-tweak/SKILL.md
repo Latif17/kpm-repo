@@ -47,7 +47,17 @@ You'll be given one of:
    KPM package.
 
 4. **Translate behavior into KPM hooks.**
-   - Single scriptlet: `install.sh` should place it appropriately (commonly
+   - Single scriptlet, one-shot state change (its whole purpose is to flip a
+     setting or delete/move files once, with no "run it again" use case — as
+     with `disable_ads`): its logic belongs directly in `install.sh` as an
+     install-time action, not copied to a launchable location. There is no
+     `launch.sh` in this case. `uninstall.sh` must restore whatever state was
+     captured/changed (see the backup/restore requirement in step 5), not
+     just remove a placed file. `sources/disable_ads/install.sh` and
+     `sources/disable_ads/uninstall.sh` are the concrete example.
+   - Single scriptlet, on-demand tool (meant to be invoked repeatedly, e.g. a
+     utility a user runs from a launcher, not a one-time state change):
+     `install.sh` should place it appropriately (commonly
      `/mnt/us/documents/`) and/or `launch.sh` should invoke it, following the
      `kpm launch <id>` convention described in the KPM package docs.
      `uninstall.sh` should remove exactly what `install.sh` placed, and
