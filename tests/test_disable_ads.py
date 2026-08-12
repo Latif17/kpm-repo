@@ -103,3 +103,68 @@ def test_upgrade_call_skips_backup_and_restore(tmp_path):
     result = _run_script("uninstall.sh", tmp_path, extra_args=["upgrade"])
     assert (tmp_path / "backup").exists()
     assert "upgrade in progress" in result.stdout.lower()
+
+
+def test_install_aborts_and_cleans_up_on_backup_failure(tmp_path):
+    (tmp_path / "adunits").mkdir()
+    (tmp_path / "adunits" / "unit1.png").write_text("fake asset")
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "assets" / "logo.png").write_text("fake asset")
+    _make_appreg_db(tmp_path / "appreg.db", "true")
+
+    # Plant a plain file at the backup path so `mkdir -p "$BACKUP_DIR"`
+    # inside install.sh fails partway through the backup step. The backup
+    # dir doesn't exist as a directory yet, so the "already backed up"
+    # guard doesn't short-circuit the block - we actually exercise the
+    # failure/cleanup path.
+    backup_path = tmp_path / "backup"
+    backup_path.write_text("not a directory")
+
+    env = os.environ.copy()
+    env["DISABLE_ADS_ADUNITS_DIR"] = str(tmp_path / "adunits")
+    env["DISABLE_ADS_ASSETS_DIR"] = str(tmp_path / "assets")
+    env["DISABLE_ADS_APPREG_DB"] = str(tmp_path / "appreg.db")
+    env["DISABLE_ADS_BACKUP_DIR"] = str(backup_path)
+    env["DISABLE_ADS_REBOOT_CMD"] = "true"
+
+    result = subprocess.run(
+        ["sh", str(PACKAGE_DIR / "install.sh")],
+        cwd=PACKAGE_DIR,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    # The script must abort rather than silently continuing.
+    assert result.returncode != 0
+
+    # Nothing destructive should have happened: originals survive untouched.
+    assert (tmp_path / "adunits" / "unit1.png").exists()
+    assert (tmp_path / "assets" / "logo.png").exists()
+    assert _read_adunit_viewable(tmp_path / "appreg.db") == "true"
+
+    # The partial "backup" must not be left behind looking like a completed
+    # backup dir - otherwise a retried install would see it, skip the
+    # backup step entirely, and then destroy the real data with nothing
+    # behind it.
+    assert not backup_path.is_dir()
+
+
+def test_uninstall_normalizes_malicious_backup_value(tmp_path):
+    _make_appreg_db(tmp_path / "appreg.db", "true")
+
+    backup_dir = tmp_path / "backup"
+    backup_dir.mkdir()
+    # A backup file that shouldn't exist in practice (install.sh only ever
+    # writes 'true'/'false'), but simulate a corrupted/tampered one to prove
+    # uninstall.sh doesn't interpolate it into SQL unchecked.
+    (backup_dir / "adunit_viewable.bak").write_text(
+        "true'; drop table properties; --"
+    )
+
+    result = _run_script("uninstall.sh", tmp_path)
+
+    # Must not have executed the injected SQL - the properties table (and
+    # the row in it) must still be intact and readable.
+    assert _read_adunit_viewable(tmp_path / "appreg.db") == "true"
+    assert result.returncode == 0

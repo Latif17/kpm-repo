@@ -36,9 +36,14 @@ fi
 
 if [ -f "$BACKUP_DIR/adunit_viewable.bak" ]; then
     ORIGINAL_VALUE=$(cat "$BACKUP_DIR/adunit_viewable.bak")
-    if [ -z "$ORIGINAL_VALUE" ]; then
-        ORIGINAL_VALUE="true"
-    fi
+    # adunit.viewable only ever holds 'true' or 'false' on the device.
+    # Allowlist it before interpolating into SQL below - anything that
+    # isn't exactly one of those two values falls back to "true" (the
+    # same default already used for the empty/missing case).
+    case "$ORIGINAL_VALUE" in
+        true|false) ;;
+        *) ORIGINAL_VALUE="true" ;;
+    esac
     echo "Restoring adunit.viewable to $ORIGINAL_VALUE"
     sqlite3 "$APPREG_DB" "update properties set value = '$ORIGINAL_VALUE' where name = 'adunit.viewable';"
 fi
